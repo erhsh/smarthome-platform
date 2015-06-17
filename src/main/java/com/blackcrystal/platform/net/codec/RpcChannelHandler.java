@@ -7,6 +7,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.CONTINUE;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -24,12 +25,26 @@ import io.netty.util.ReferenceCountUtil;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Service;
 
-import com.blackcrystal.platform.net.IHandler;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.blackcrystal.platform.handler.IHandler;
+import com.blackcrystal.platform.handler.RpcRequest;
 
+@Service("rpcChannelHandler")
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class RpcChannelHandler extends ChannelInboundHandlerAdapter {
 	protected static final Logger logger = LoggerFactory
 			.getLogger(RpcChannelHandler.class);
+
+	@Autowired
+	private ApplicationContext ctx;
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg)
@@ -65,6 +80,8 @@ public class RpcChannelHandler extends ChannelInboundHandlerAdapter {
 		String uri = req.getUri();
 		logger.info("request uri = {}", uri);
 
+		// Remove mark "?"
+		uri = uri.contains("?") ? uri.substring(0, uri.indexOf("?")) : uri;
 		IHandler handler = getHandler(uri);
 		if (null == handler) {
 			logger.warn("Unkown uri = {}", uri);
@@ -75,15 +92,18 @@ public class RpcChannelHandler extends ChannelInboundHandlerAdapter {
 		// deal request
 		Object ret = null;
 		try {
-			ret = handler.rpc(req);
+			RpcRequest rpcReq = new RpcRequest(ctx, req);
+			ret = handler.rpc(rpcReq);
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.error("Deal request error!!! e = ", e);
 		} finally {
 			if (null == ret) {
-				logger.error("ret is null, {}", uri);
+				logger.warn("ret is null, {}", uri);
+				sendHttpResponse(ctx, req, newResponse(SERVICE_UNAVAILABLE));
 				return;
 			}
-			byte[] content = ret.toString().getBytes();
+
+			byte[] content = JSON.toJSONBytes(ret, new SerializerFeature[0]);
 			sendHttpResponse(ctx, req, newResponse(OK, content));
 		}
 	}
@@ -125,6 +145,16 @@ public class RpcChannelHandler extends ChannelInboundHandlerAdapter {
 	}
 
 	private IHandler getHandler(String uri) {
-		return null;
+		IHandler handler = null;
+
+		try {
+			handler = ctx.getBean(uri, IHandler.class);
+		} catch (BeansException e) {
+			e.printStackTrace();
+			logger.error("Get bean exception!!! uri = {}, e = {}", uri, e);
+		}
+
+		return handler;
+
 	}
 }

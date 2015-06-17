@@ -9,7 +9,15 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.stereotype.Service;
+
+@Service
 public class RpcChannelInitializer extends ChannelInitializer<SocketChannel> {
+
+	@Autowired
+	private ApplicationContext ctx;
 
 	@Override
 	protected void initChannel(SocketChannel ch) throws Exception {
@@ -19,6 +27,6 @@ public class RpcChannelInitializer extends ChannelInitializer<SocketChannel> {
 		p.addLast("codec-http", new HttpServerCodec());
 		p.addLast("aggregator", new HttpObjectAggregator(Integer.MAX_VALUE));
 		p.addLast("decoder", new HttpRequestDecoder(1024, 1024, 1024, true));
-		p.addLast("handler", new RpcChannelHandler());
+		p.addLast("handler", (RpcChannelHandler)ctx.getBean("rpcChannelHandler"));
 	}
 }

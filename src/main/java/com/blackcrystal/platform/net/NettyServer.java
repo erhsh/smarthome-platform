@@ -10,6 +10,8 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.support.AbstractApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 import com.blackcrystal.platform.net.codec.RpcChannelInitializer;
 
@@ -25,27 +27,32 @@ public class NettyServer {
 
 	protected final int port;
 
+	private AbstractApplicationContext ctx;
+
 	public NettyServer(int port) {
 		this.port = port;
+
+		initContext();
 	}
 
 	public void start() {
+
 		EventLoopGroup parentGroup = new NioEventLoopGroup();
 		EventLoopGroup childGroup = new NioEventLoopGroup();
 
 		try {
-			ServerBootstrap bootstrap = new ServerBootstrap();
+			ServerBootstrap b = new ServerBootstrap();
 
-			bootstrap.option(ChannelOption.SO_BACKLOG, 1024);
-			bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
-			bootstrap.option(ChannelOption.TCP_NODELAY, true);
+			b.option(ChannelOption.SO_BACKLOG, 1024);
+			b.option(ChannelOption.SO_KEEPALIVE, true);
+			b.option(ChannelOption.TCP_NODELAY, true);
 
-			bootstrap.group(parentGroup, childGroup);
-			bootstrap.channel(NioServerSocketChannel.class);
-			bootstrap.childHandler(new RpcChannelInitializer());
+			b.group(parentGroup, childGroup);
+			b.channel(NioServerSocketChannel.class);
+			b.childHandler(ctx.getBean(RpcChannelInitializer.class));
 
 			//
-			ChannelFuture defaultFuture = bootstrap.bind(port);
+			ChannelFuture defaultFuture = b.bind(port);
 			defaultFuture.sync();
 
 			//
@@ -57,17 +64,19 @@ public class NettyServer {
 			closeFuture.sync();
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.error("Server run exception!!! e = ", e);
 		} finally {
 			childGroup.shutdownGracefully();
 			parentGroup.shutdownGracefully();
+
+			ctx.close();
 		}
 
 	}
 
-	public static void main(String[] args) {
-		NettyServer server = new NettyServer(8080);
-		server.start();
+	private void initContext() {
+		ctx = new ClassPathXmlApplicationContext("beans.xml");
+		ctx.refresh();
 	}
 
 }
