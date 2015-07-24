@@ -73,7 +73,7 @@ public class UserDao {
 			User user = new User();
 
 			user.setId(String.valueOf(rs.getInt("id")));
-
+			user.setShadow(rs.getString("shadow"));
 			return user;
 		}
 
